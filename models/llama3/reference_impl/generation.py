@@ -105,7 +105,10 @@ class Llama:
         """
 
         if not torch.distributed.is_initialized():
-            torch.distributed.init_process_group("nccl")
+            if _is_cuda(device):
+                torch.distributed.init_process_group("nccl")
+            else:
+                torch.distributed.init_process_group("gloo")
 
         if not model_parallel_is_initialized():
             if model_parallel_size is None:
@@ -113,8 +116,8 @@ class Llama:
             initialize_model_parallel(model_parallel_size)
 
         
+        local_rank = int(os.environ.get("LOCAL_RANK", 0))
         if _is_cuda(device):
-            local_rank = int(os.environ.get("LOCAL_RANK", 0))
             torch.cuda.set_device(local_rank)
 
         torch.manual_seed(seed)
@@ -146,7 +149,7 @@ class Llama:
         elif _is_cuda(device):
             torch.set_default_tensor_type(torch.cuda.HalfTensor)
         else:
-            torch.set_default_tensor_type(torch.float16)
+            torch.set_default_dtype(torch.float16)
         
         if model_args.vision_chunk_size > 0:
             from .multimodal.model import CrossAttentionTransformer
@@ -158,7 +161,7 @@ class Llama:
         model.load_state_dict(checkpoint, strict=True)
         print(f"Loaded in {time.time() - start_time:.2f} seconds")
 
-        return Llama(model, tokenizer, model_args)
+        return Llama(model, tokenizer, model_args, device)
 
     def __init__(self, model: Transformer, tokenizer: Tokenizer, args: ModelArgs, device: torch.device = torch.device('cuda')):
         self.args = args
@@ -240,7 +243,7 @@ class Llama:
                     ),
                 )
 
-        stop_tokens = torch.tensor(self.tokenizer.stop_tokens)
+        stop_tokens = torch.tensor(self.tokenizer.stop_tokens, device=self.device)
         for cur_pos in range(min_prompt_len, total_len):
             if is_vision:
                 position_ids = torch.arange(

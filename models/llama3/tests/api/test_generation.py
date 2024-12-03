@@ -10,6 +10,8 @@ import unittest
 
 from pathlib import Path
 
+import torch
+
 import numpy as np
 from llama_models.llama3.api.datatypes import ImageMedia, SystemMessage, UserMessage
 
@@ -34,6 +36,7 @@ def build_generator(env_var: str):
         max_seq_len=128,
         max_batch_size=1,
         model_parallel_size=1,
+        device=torch.device(os.getenv("DEVICE", "cuda"))
     )
 
 
